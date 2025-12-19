@@ -451,22 +451,23 @@ public function ajax_eliminar_preliminar() {
 
 }
 
+
+ED_Preliminares_Simple::get_instance();
+register_activation_hook( __FILE__, array( 'ED_Preliminares_Simple', 'on_activation' ) );
+
 // ===============================
-// ✅ Auto-updates desde GitHub
+// ✅ Auto-updates desde GitHub (ED)
 // ===============================
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
 
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
 $updateChecker = PucFactory::buildUpdateChecker(
-    'https://github.com/TUUSUARIO/preliminares-ed/',
+    'https://github.com/ED-2022/preliminares-ed/',
     __FILE__,
     'preliminares-ed'
 );
 
-// Para releases (recomendado)
+// Recomendado: usar "Releases" de GitHub como fuente de actualización
 $updateChecker->getVcsApi()->enableReleaseAssets();
 
-
-ED_Preliminares_Simple::get_instance();
-register_activation_hook( __FILE__, array( 'ED_Preliminares_Simple', 'on_activation' ) );
