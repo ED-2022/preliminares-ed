@@ -3,7 +3,7 @@
  * Plugin Name: ED Preliminares (Versión Final Simple)
  * Description: Captura preliminares (teléfono + datos parciales) desde el formulario principal de la landing sin necesidad de que el usuario envíe el formulario. Elimina el preliminar automáticamente si el formulario se envía con éxito.
  * Author: Emprendedor Digital
- * Version: 1.0.5
+ * Version: 1.0.4
  */
 
 if ( ! defined('ABSPATH') ) {
