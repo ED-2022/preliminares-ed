@@ -36,7 +36,7 @@ class ED_Preliminares_Simple {
         add_action( 'wp_ajax_ed_guardar_preliminar',        array( $this, 'ajax_guardar_preliminar' ) );
         add_action( 'wp_ajax_nopriv_ed_guardar_preliminar', array( $this, 'ajax_guardar_preliminar' ) );
 
-        // ✅ NUEVO: eliminar preliminar cuando el formulario se envía
+        // Eliminar preliminar cuando el formulario se envía
         add_action( 'wp_ajax_ed_eliminar_preliminar',        array( $this, 'ajax_eliminar_preliminar' ) );
         add_action( 'wp_ajax_nopriv_ed_eliminar_preliminar', array( $this, 'ajax_eliminar_preliminar' ) );
 
@@ -89,16 +89,13 @@ class ED_Preliminares_Simple {
      * Regla: solo guarda si teléfono tiene al menos 10 dígitos
      */
     public function ajax_guardar_preliminar() {
-        // No matamos por nonce para evitar problemas de caché
         $nombre       = isset($_POST['nombre'])   ? sanitize_text_field( $_POST['nombre'] )   : '';
         $email        = isset($_POST['email'])    ? sanitize_email( $_POST['email'] )         : '';
         $telefono_raw = isset($_POST['telefono']) ? sanitize_text_field( $_POST['telefono'] ) : '';
         $landing      = isset($_POST['landing'])  ? esc_url_raw( $_POST['landing'] )          : '';
 
-        // Normalizar teléfono: solo dígitos
         $telefono_digits = preg_replace('/\D+/', '', $telefono_raw);
 
-        // Debe tener mínimo 10 dígitos
         if ( strlen($telefono_digits) < 10 ) {
             wp_send_json_success( array(
                 'status' => 'ignored',
@@ -114,12 +111,10 @@ class ED_Preliminares_Simple {
         global $wpdb;
         $table_name = $this->table_name;
 
-        // Aseguramos que la tabla exista por si acaso
         $this->crear_tabla();
 
         $ahora = current_time( 'mysql' );
 
-        // ¿Ya existe registro con ese teléfono + landing?
         $existente_id = $wpdb->get_var( $wpdb->prepare(
             "SELECT id FROM {$table_name} WHERE telefono = %s AND landing_url = %s LIMIT 1",
             $telefono_digits,
@@ -159,44 +154,41 @@ class ED_Preliminares_Simple {
     }
 
     /**
-     * ✅ NUEVO: AJAX eliminar preliminar
-     * Se usa cuando el formulario se envía (para que no queden "preliminares" de gente que sí compró/contactó).
-     * Borra por teléfono + landing_url.
+     * AJAX eliminar preliminar
+     * Borra por teléfono + landing_url (usando landing_original si viene desde página de gracias).
      */
-public function ajax_eliminar_preliminar() {
-    $telefono_raw     = isset($_POST['telefono']) ? sanitize_text_field( $_POST['telefono'] ) : '';
-    $landing          = isset($_POST['landing']) ? esc_url_raw( $_POST['landing'] ) : '';
-    $landing_original = isset($_POST['landing_original']) ? esc_url_raw( $_POST['landing_original'] ) : '';
+    public function ajax_eliminar_preliminar() {
+        $telefono_raw     = isset($_POST['telefono']) ? sanitize_text_field( $_POST['telefono'] ) : '';
+        $landing          = isset($_POST['landing']) ? esc_url_raw( $_POST['landing'] ) : '';
+        $landing_original = isset($_POST['landing_original']) ? esc_url_raw( $_POST['landing_original'] ) : '';
 
-    $telefono_digits = preg_replace('/\D+/', '', $telefono_raw);
+        $telefono_digits = preg_replace('/\D+/', '', $telefono_raw);
 
-    if ( strlen($telefono_digits) < 10 ) {
-        wp_send_json_success(array('status'=>'ignored','reason'=>'telefono_incompleto'));
+        if ( strlen($telefono_digits) < 10 ) {
+            wp_send_json_success(array('status'=>'ignored','reason'=>'telefono_incompleto'));
+        }
+
+        if ( !empty($landing_original) ) {
+            $landing = $landing_original;
+        }
+
+        if ( empty($landing) ) {
+            $landing = home_url( add_query_arg( array(), $_SERVER['REQUEST_URI'] ?? '' ) );
+        }
+
+        global $wpdb;
+        $table_name = $this->table_name;
+
+        $this->crear_tabla();
+
+        $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$table_name} WHERE telefono = %s AND landing_url = %s",
+            $telefono_digits,
+            $landing
+        ) );
+
+        wp_send_json_success(array('status'=>'deleted','tel'=>$telefono_digits));
     }
-
-    // ✅ Si llega la landing original, usamos esa (esto arregla el caso de página de gracias)
-    if ( !empty($landing_original) ) {
-        $landing = $landing_original;
-    }
-
-    if ( empty($landing) ) {
-        $landing = home_url( add_query_arg( array(), $_SERVER['REQUEST_URI'] ?? '' ) );
-    }
-
-    global $wpdb;
-    $table_name = $this->table_name;
-
-    $this->crear_tabla();
-
-    $wpdb->query( $wpdb->prepare(
-        "DELETE FROM {$table_name} WHERE telefono = %s AND landing_url = %s",
-        $telefono_digits,
-        $landing
-    ) );
-
-    wp_send_json_success(array('status'=>'deleted','tel'=>$telefono_digits));
-}
-
 
     /**
      * Borrar preliminares con más de 13 días
@@ -284,15 +276,11 @@ public function ajax_eliminar_preliminar() {
     }
 
     /**
-     * JS inline: engancha el PRIMER <form> de la página
-     * - Guarda preliminar cuando el teléfono llega a 10+ dígitos
-     * - ✅ Elimina preliminar cuando el form se envía con éxito (o por submit como fallback)
+     * JS inline: guarda preliminar y lo elimina en redirect (página de gracias) usando beacon + localStorage
      */
-   public function imprimir_js_inline() {
-    if ( is_admin() ) return;
-
-    $ajax_url = admin_url( 'admin-ajax.php' );
-    ?>
+    public function imprimir_js_inline() {
+        if ( is_admin() ) return;
+        ?>
 <script>
 (function(){
   var ajaxUrl = "<?php echo esc_js( admin_url('admin-ajax.php') ); ?>";
@@ -308,7 +296,6 @@ public function ajax_eliminar_preliminar() {
       var blob = new Blob([toQS(data)], {type:'application/x-www-form-urlencoded; charset=UTF-8'});
       if (navigator.sendBeacon) return navigator.sendBeacon(ajaxUrl, blob);
     }catch(e){}
-    // fallback fetch
     try{
       fetch(ajaxUrl,{
         method:'POST',
@@ -321,7 +308,6 @@ public function ajax_eliminar_preliminar() {
     return false;
   }
 
-  // ✅ PLAN B: si estamos en la página de gracias, intentamos borrar con lo guardado
   function intentarBorradoDesdeGracias(){
     try{
       var tel = localStorage.getItem('ed_pre_tel') || '';
@@ -332,7 +318,6 @@ public function ajax_eliminar_preliminar() {
           telefono: tel,
           landing_original: landingOriginal
         });
-        // limpiamos para no repetir
         localStorage.removeItem('ed_pre_tel');
         localStorage.removeItem('ed_pre_landing');
       }
@@ -343,7 +328,6 @@ public function ajax_eliminar_preliminar() {
     var form = document.querySelector('form');
     console.log('ED Preliminares: form encontrado =', form ? 'sí' : 'no');
 
-    // Si no hay form (muchas páginas de gracias no lo tienen), igual intentamos el plan B
     if(!form){
       intentarBorradoDesdeGracias();
       return;
@@ -377,7 +361,6 @@ public function ajax_eliminar_preliminar() {
       var nombre = getField('[name^="form_fields[nombre]"], #nombre');
       var email  = getField('[name^="form_fields[email]"], #email');
 
-      // guardamos (fetch normal)
       fetch(ajaxUrl,{
         method:'POST',
         headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},
@@ -397,18 +380,16 @@ public function ajax_eliminar_preliminar() {
       timeoutId = setTimeout(guardarPreliminar, 1200);
     }
 
-    form.addEventListener('input', function(e){
+    form.addEventListener('input', function(){
       var tel = getTelDigits();
       if(tel && tel.length >= 10) lastValidPhone = tel;
       programarGuardado();
     });
 
-    // ✅ CLAVE: al enviar, borramos antes del redirect (beacon)
     form.addEventListener('submit', function(){
       var tel = getTelDigits();
       if(tel && tel.length >= 10) lastValidPhone = tel;
 
-      // guardamos datos para plan B (por si el beacon no alcanza)
       try{
         if(lastValidPhone && lastValidPhone.length >= 10){
           localStorage.setItem('ed_pre_tel', lastValidPhone);
@@ -416,14 +397,12 @@ public function ajax_eliminar_preliminar() {
         }
       }catch(e){}
 
-      // borrar YA, usando landing_original (la landing actual)
       beacon({
         action:'ed_eliminar_preliminar',
         telefono: lastValidPhone,
         landing_original: window.location.href
       });
 
-      // extra: por si el navegador dispara pagehide rápido
       window.addEventListener('pagehide', function(){
         beacon({
           action:'ed_eliminar_preliminar',
@@ -433,7 +412,6 @@ public function ajax_eliminar_preliminar() {
       }, { once:true });
     });
 
-    // Por si esta página también es una gracias (caso raro), intentamos igual
     intentarBorradoDesdeGracias();
   }
 
@@ -444,20 +422,18 @@ public function ajax_eliminar_preliminar() {
   }
 })();
 </script>
+        <?php
+    }
 
-    <?php
-}
-
-
-}
-
+} // ✅ cierre correcto de la clase
 
 ED_Preliminares_Simple::get_instance();
 register_activation_hook( __FILE__, array( 'ED_Preliminares_Simple', 'on_activation' ) );
 
-// ===============================
-// ✅ Auto-updates desde GitHub (ED)
-// ===============================
+
+// =====================================================
+// ✅ AUTO-UPDATES DESDE GITHUB (ED-2022/preliminares-ed)
+// =====================================================
 require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
 
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
@@ -468,6 +444,8 @@ $updateChecker = PucFactory::buildUpdateChecker(
     'preliminares-ed'
 );
 
-// Recomendado: usar "Releases" de GitHub como fuente de actualización
-$updateChecker->getVcsApi()->enableReleaseAssets();
+// Fuerza rama (por si tu repo usa main)
+$updateChecker->setBranch('main');
 
+// NO uses enableReleaseAssets por ahora
+// $updateChecker->getVcsApi()->enableReleaseAssets();
