@@ -451,5 +451,22 @@ public function ajax_eliminar_preliminar() {
 
 }
 
+// ===============================
+// ✅ Auto-updates desde GitHub
+// ===============================
+require_once __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
+
+use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
+
+$updateChecker = PucFactory::buildUpdateChecker(
+    'https://github.com/TUUSUARIO/preliminares-ed/',
+    __FILE__,
+    'preliminares-ed'
+);
+
+// Para releases (recomendado)
+$updateChecker->getVcsApi()->enableReleaseAssets();
+
+
 ED_Preliminares_Simple::get_instance();
 register_activation_hook( __FILE__, array( 'ED_Preliminares_Simple', 'on_activation' ) );
